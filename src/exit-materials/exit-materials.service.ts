@@ -364,7 +364,7 @@ updateExitMaterialsDto.details.forEach(async (detail, index) => {
   if (exitMaterialsAndMeter.details[index]) {
     // Realizar la operación de cálculo de used y total
     const used = detail.assignedQuantity - detail.restore;
-    const materialPrice = exitMaterialsAndMeter.details[index].material.price || 0;
+    const materialPrice = exitMaterialsAndMeter.details[index].material ?  exitMaterialsAndMeter.details[index].material.price || 0 : 0;
     const meterPrice = exitMaterialsAndMeter.details[index].meter ? exitMaterialsAndMeter.details[index].meter.price || 0 : 0;
     const selectedPrice = Math.max(materialPrice, meterPrice);
     const total = used * selectedPrice;
@@ -433,7 +433,9 @@ for (const detail of detailsWithMaterials ) {
 
 // Guardar los nuevos detalles en la base de datos
 await this.detailsExitRepository.save(detailAssignments);
-await this.updatePEtoPEAssignments(collaboratorId, ware, detailAssignments)
+if (detailAssignments .length > 0) {
+  await this.updatePEtoPEAssignments(collaboratorId, ware, detailAssignments)
+}
 
 return { message: 'Salida actualizada correctamente.', updatedExitMaterial: savedExitMaterial  };
 
@@ -807,9 +809,11 @@ async generarPDF(id: string, user: User): Promise<Buffer> {
 // }
 
 async updatePEtoPEAssignments(collaboratorId: string, warehouseId: string, details: any[]): Promise<void> {
-  try {
+  try {  
+    
       for (const detail of details) {
-          if (detail.material.code === '10006401') { // Verificar si es material "PE al PE"
+
+          if (detail && detail.material && detail.material.code === '10006401') { // Verificar si es material "PE al PE"
               const materialId = detail.materialId;
               const assignedQuantity = detail.assignedQuantity;
 
@@ -857,6 +861,7 @@ async updatePEtoPEAssignments(collaboratorId: string, warehouseId: string, detai
               })
               )
           }
+          continue
       }
   } catch (error) {
       this.handleDBExceptions(error);
