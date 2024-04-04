@@ -147,7 +147,7 @@ export class MetersService {
 
       return meter;
   }  
-
+/* 
   async searchMeter(term: string, user: User) {
     let data = await this.metersRepository.find({
       where: [
@@ -158,6 +158,29 @@ export class MetersService {
       ],
     });
     return data;
+  } */
+
+  async searchMeter(term: string, user: User) {
+    let metersQuery = this.metersRepository.createQueryBuilder('meter')
+      .leftJoinAndSelect('meter.user', 'user')
+      .leftJoinAndSelect('meter.warehouse', 'warehouse')
+      .where(
+        '(meter.name LIKE :term OR meter.code LIKE :term OR meter.serial LIKE :term)',
+        { term: `%${term}%` },
+      );
+  
+    if (!user.rol.includes('admin')) {
+      // Si no es administrador, aplicar restricciones por bodega
+      metersQuery = metersQuery
+        .andWhere('warehouse.id IN (:...warehouseIds)', { warehouseIds: user.warehouses.map(warehouse => warehouse.id) });
+    }
+  
+    // Agrega la condición para excluir los materiales eliminados
+    metersQuery = metersQuery.andWhere('meter.deletedAt IS NULL');
+  
+    const materials = await metersQuery.getMany();
+  
+    return materials;
   }
   
  async update(id: string, updateMeterDto: UpdateMeterDto, user: User) {
