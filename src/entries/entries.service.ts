@@ -58,6 +58,9 @@ export class EntriesService {
         details: createDetailDto
       });
 
+       //verificar detalles de entrada
+       await this.evaluateMaterialAndMeterDetails(entry);
+
       // Actualizar materiales y medidores
      await this.updateMaterialAndMeterDetails(entry);
 
@@ -111,6 +114,9 @@ export class EntriesService {
         details: entryDetails
       });
   
+      //verificar detalles de entrada
+      await this.evaluateMaterialAndMeterDetails(entry);
+
       // Actualizar materiales y medidores
       await this.updateMaterialAndMeterDetails(entry);
   
@@ -143,6 +149,63 @@ export class EntriesService {
     });
   }  
 
+
+  async evaluateMaterialAndMeterDetails(entry: Entry) {
+    
+    
+    try {
+      for (const detail of entry.details) {
+
+        if (!detail.code || !detail.name || !detail.quantity || !detail.price || !detail.observation || detail.observation === "" || detail.observation === null|| !detail.total ) {
+          throw new Error('Los campos obligatorios no fueron llenadaos correctamente, intentar nuevamente.');
+        }
+        
+        // Obtener el material existente
+        const existingMaterial = await this.materialRepository.createQueryBuilder('material')
+        .where('material.code = :code', { code: detail.code })
+        .getOne();
+    
+  
+        // Si el material es un medidor
+        if (detail.name.startsWith("MEDIDOR")) {
+          // Buscar si ya existe el medidor por código y serial
+          const existingMeter = await this.meterRepository
+            .createQueryBuilder()
+            .where(
+              'meter.code = :code AND meter.serial = :serial AND warehouseId = :warehouseId',
+              {
+                code: detail.code,
+                serial: detail.serial,
+                warehouseId: entry.warehouse.id,
+              },
+            )
+            .getOne();
+          if (existingMeter) {
+            throw new Error(`El medidor con serie ${detail.serial} ya existe en la bodega ${entry.warehouse.name}.`);
+          }
+  
+          if (detail.quantity !== 1) {
+            throw new Error( `La cantidad del medidor debe ser 1 para la entrada.`,);
+          }
+          // Si no existe el medidor, agregarlo
+          continue;
+        }
+  
+        if (existingMaterial) {
+          // Actualizar la cantidad en cualquier caso
+          continue;
+        }else{
+        continue;
+        }
+  
+      }
+    } catch (error) {
+      // Propagar la excepción
+      throw new Error(error);
+    }
+  } 
+
+  
   async updateMaterialAndMeterDetails(entry: Entry) {
     
     

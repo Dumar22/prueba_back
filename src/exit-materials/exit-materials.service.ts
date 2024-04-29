@@ -137,6 +137,7 @@ export class ExitMaterialsService {
 
       // Verificar si todas las herramientas existen y
       // Actualiza la cantidad de herramientas en el inventario
+      await this.verifyOneMaterialsExistence(details, ware);
       await this.verifyMaterialsExistence(details, ware);
 
       // Guardar la asignación en la base de datos
@@ -175,9 +176,10 @@ export class ExitMaterialsService {
       //console.log('data save',detailAssignments);
 
       await this.detailsExitRepository.save(detailAssignments);
+      // actualizar salida de peal pe
       await this.updatePEtoPEAssignments(collaboratorId, ware, detailAssignments)
 
-      // Devolver la asignación completa con los detalles asociados
+      
       return {message:'Salida creada correctamente.'};
     } catch (error) {
       // Manejar las excepciones de la base de datos
@@ -386,7 +388,9 @@ updateExitMaterialsDto.details.forEach(async (detail, index) => {
      await this.retunMaterialsAndMeters(details, ware);
 
      // Actualizar las asignaciones "PE al PE"
-await this.updatePEtoPEAssignments(collaboratorId, ware, details)
+//REMOVER TEMPORAL SALIDA PE AL PE
+
+//await this.updatePEtoPEAssignments(collaboratorId, ware, details)
  // Crear una instancia actualizada de salida con los nuevos detalles
  const updatedExitMaterial = this.exitMaterialsRepository.create({
   ...exitMaterialsAndMeter,
@@ -607,6 +611,81 @@ async generarPDF(id: string, user: User): Promise<Buffer> {
     return { message: 'Salida de materiales eliminada con éxito.' };
   }
 
+  private async verifyOneMaterialsExistence(
+    details: CreateDetailExitMaterialsDto[],
+    warehouseId: string,
+  ): Promise<void> {
+    try {
+      for (const detail of details) {
+       // console.log(details);
+
+        const materialId = detail.materialId;
+        const assignedQuantity = detail.assignedQuantity;
+
+        // Buscar la material en la base de datos
+        const material = await this.materialRepository.findOne({
+          where: { id: materialId },
+          relations: ['warehouse'],
+        });
+
+        if (!material) {
+          const meter = await this.meterRepository.findOne({
+            where: { id: materialId },
+            relations: ['warehouse'],
+          });
+
+          if (!meter) {
+            throw new Error(`Medidor con ID ${materialId} no encontrado`);
+          }
+
+          // Verificar si la herramienta pertenece a la bodega del colaborador
+          if (meter.warehouse.id !== warehouseId) {
+            throw new Error(
+              `Medidor con ID ${materialId} no encontrado en la bodega asignada `,
+            );
+          }
+
+          // Verificar si la cantidad asignada es mayor que la cantidad disponible
+          if (assignedQuantity > meter.quantity) {
+            throw new Error(
+              `La cantidad asignada del meter con ID ${materialId} es mayor que la cantidad disponible`,
+            );
+          }
+
+          // Actualizar la cantidad de la herramienta en el inventario
+          continue;
+          
+        } else {
+          // Verificar si la herramienta pertenece a la bodega del colaborador
+          if (material.warehouse.id !== warehouseId) {
+            //continue;
+            throw new Error(
+              `Material con ID ${materialId} no encontrada en la bodega asignada`,
+            );
+          }
+
+          // Verificar si el material es el que se desea omitir
+        if (material.code === '10006401') {
+          // Si es el material a omitir, no hacer nada
+          continue;
+        }
+
+          // Verificar si la cantidad asignada es mayor que la cantidad disponible
+          if (assignedQuantity > material.quantity) {
+            throw new Error(
+              `La cantidad asignada del material con ID ${material.name} es mayor que la cantidad disponible`,
+            );
+          }
+
+          // Actualizar la cantidad de la herramienta en el inventario
+          continue;
+        }
+      }
+    } catch (error) {
+      // Manejar las excepciones de la base de datos
+      this.handleDBExceptions(error);
+    }
+  }
   private async verifyMaterialsExistence(
     details: CreateDetailExitMaterialsDto[],
     warehouseId: string,
@@ -765,48 +844,6 @@ async generarPDF(id: string, user: User): Promise<Buffer> {
     }
   }
 
-//   async updatePEtoPEAssignments(collaboratorId: string, warehouseId: string, details: any[]): Promise<void> {
-//     try {
-//         for (const detail of details) {
-//             if (detail.material.code === '10006401') {
-//                 const materialId = detail.materialId;
-//                 const assignedQuantity = detail.assignedQuantity;
-
-//                 const assignment = await this.assignmentPeAlPeRepository.findOne({
-//                     where: {
-//                         collaborator: { id: collaboratorId },
-//                         warehouse: { id: warehouseId },
-//                         details: { material: { id: materialId } }
-//                     },
-//                     relations: ['details']
-//                 });
-
-//                 if (!assignment) {
-//                     throw new NotFoundException('Asignación de material "PE al PE" no encontrada para el colaborador y material especificados.');
-//                 }
-
-//                 for (const assignmentDetail of assignment.details) {
-//                     console.log(assignmentDetail.material.id);
-//                     console.log(assignmentDetail.assignedQuantity);                   
-
-//                     const updatedUsedQuantity = assignmentDetail.used + assignedQuantity;
-                    
-//                     if (updatedUsedQuantity > assignmentDetail.assignedQuantity) {
-//                       throw new Error('La cantidad es mayor que la cantidad utilizada en la asignación "PE al PE".');
-//                   }
-
-//                     assignmentDetail.used = updatedUsedQuantity;
-//                 }
-
-              
-//                 await this.assignmentPeAlPeRepository.save(assignment);
-//                 await this.assignmentdetailsPeAlPeRepository.save(assignment.details)
-//             }
-//         }
-//     } catch (error) {
-//         this.handleDBExceptions(error);
-//     }
-// }
 
 async updatePEtoPEAssignments(collaboratorId: string, warehouseId: string, details: any[]): Promise<void> {
   try {  

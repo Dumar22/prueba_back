@@ -26,14 +26,14 @@ export class ContractService {
   const lastExitNumber = await this.getLastExitNumberForUser(user.warehouses[0].id);
 
     const existingContract = await this.contractsRepository.createQueryBuilder('contract')
-    .where('contract.contract = :contract AND warehouseId = :warehouseId', { 
-      contract: createContractDto.contract, 
+    .where('contract.request = :request AND warehouseId = :warehouseId', { 
+      contract: createContractDto.request, 
       warehouseId: user.warehouses[0].id  
     })
     .getOne();
   
       if (existingContract) {
-        throw new BadRequestException(`El Contrato ${createContractDto.contract} ya existe en la bodega ${user.warehouses[0].name}.`);
+        throw new BadRequestException(`El Contrato con solicitud ${createContractDto.request} ya existe en la bodega ${user.warehouses[0].name}.`);
       }
 
     try {   
@@ -68,44 +68,47 @@ export class ContractService {
   }
 
   async createxls(fileBuffer: Buffer, createContractDto: CreateContractDto, user: User) {
-
-     // Obtener el número de salida para la bodega actual
-  const lastExitNumber = await this.getLastExitNumberForUser(user.warehouses[0].id);
     try {
-      // Lógica para procesar el archivo Excel y obtener la lista de materiales
-      const contracts = await this.fileUploadService.processExcel(fileBuffer, this.contractsRepository, (entry: CreateContractDto) => {
+      // Obtener el número de salida para la bodega actual
+      const lastExitNumber = await this.getLastExitNumberForUser(user.warehouses[0].id);
+  
+      // Lógica para procesar el archivo Excel y obtener la lista de contratos
+      let contracts = await this.fileUploadService.processExcel(fileBuffer, this.contractsRepository, (entry: CreateContractDto) => {
         return this.contractDataFormat(entry, user);
       });   
-        
-      // Lista de materiales que no fueron cargados
+  
+      // Ordenar los contratos por número de contrato de forma descendente
+      contracts = contracts.sort((a, b) => b.contractNumber - a.contractNumber);
+  
+      // Lista de contratos que no fueron cargados
       const failedContracts: { contract: CreateContractDto; reason: string }[] = [];
   
       for (const contract of contracts) {
         const existingContract = await this.contractsRepository.createQueryBuilder()
-        .where('contract = :contract AND warehouseId = :warehouseId', {  
-          contract: contract.contract,
-          warehouseId: user.warehouses[0].id  
-        })
-    .getOne();
-          
-    if (existingContract) {
-      failedContracts.push({ 
-        contract, 
-        reason: `El Contrato con órden de trabajo ${contract.request} ya existe en la bodega ${user.warehouses[0].name}.` 
+          .where('request = :request AND warehouseId = :warehouseId', {  
+            contract: contract.request,
+            warehouseId: user.warehouses[0].id  
+          })
+          .getOne();
         
-      });    
-    } else {    
-      // Guardar el Contarto solo si no existe
-      await this.contractsRepository.save(contract);     
-    }
+        if (existingContract) {
+          failedContracts.push({ 
+            contract, 
+            reason: `El Contrato con órden de trabajo ${contract.request} ya existe en la bodega ${user.warehouses[0].name}.` 
+          });    
+        } else {    
+          // Guardar el Contrato solo si no existe
+          await this.contractsRepository.save(contract);     
+        }
       }
   
-      return { contracts,  failedContracts, message: 'Contartos creados' };
+      return { contracts,  failedContracts, message: 'Contratos creados' };
     } catch (error) {
-      // console.log(error);
+      // Manejar las excepciones de la base de datos
       this.handleDBExeptions(error);
     }
   }
+  
   
   private contractDataFormat(entry: CreateContractDto, user: User): Contract {
     return this.contractsRepository.create({
